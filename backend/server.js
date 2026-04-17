@@ -17,8 +17,13 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // ── MongoDB Setup ────────────────────────────────────────────────
 const MONGO_URI = process.env.MONGO_URI;
 
+const fs = require('fs');
+
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('Connected to MongoDB'))
+  .then(async () => {
+    console.log('Connected to MongoDB');
+    await autoImportData();
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 const userSchema = new mongoose.Schema({
@@ -46,6 +51,33 @@ const questionSchema = new mongoose.Schema({
   answered: { type: Boolean, default: false }
 });
 const Question = mongoose.model('Question', questionSchema);
+
+// ── Auto-Import Logic ────────────────────────────────────────────
+async function autoImportData() {
+  try {
+    const userCount = await User.countDocuments();
+    if (userCount > 0) return; // Already imported
+
+    console.log('Database empty, starting auto-import from JSON...');
+    const dataDir = path.join(__dirname, 'data');
+    
+    if (fs.existsSync(path.join(dataDir, 'users.json'))) {
+      const usersData = JSON.parse(fs.readFileSync(path.join(dataDir, 'users.json'), 'utf8'));
+      if (usersData.length > 0) await User.insertMany(usersData);
+    }
+    if (fs.existsSync(path.join(dataDir, 'messages.json'))) {
+      const msgsData = JSON.parse(fs.readFileSync(path.join(dataDir, 'messages.json'), 'utf8'));
+      if (msgsData.length > 0) await Message.insertMany(msgsData);
+    }
+    if (fs.existsSync(path.join(dataDir, 'questions.json'))) {
+      const qsData = JSON.parse(fs.readFileSync(path.join(dataDir, 'questions.json'), 'utf8'));
+      if (qsData.length > 0) await Question.insertMany(qsData);
+    }
+    console.log('Auto-import successful!');
+  } catch (err) {
+    console.error('Auto-import failed:', err);
+  }
+}
 
 // ── Auth helpers ─────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 
-const MONGO_URI = 'mongodb://q_nnn412:5EeXoefEmubeO79O@ac-zt9gung-shard-00-00.bgzuhgw.mongodb.net:27017,ac-zt9gung-shard-00-01.bgzuhgw.mongodb.net:27017,ac-zt9gung-shard-00-02.bgzuhgw.mongodb.net:27017/?ssl=true&replicaSet=atlas-zt9gung-shard-0&authSource=admin&retryWrites=true&w=majority&appName=qnnn412';
+const MONGO_URI = 'mongodb+srv://q_nnn412:5EeXoefEmubeO79O@qnnn412.bgzuhgw.mongodb.net/?appName=qnnn412';
 
 // Models
 const userSchema = new mongoose.Schema({
