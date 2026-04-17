@@ -1,15 +1,12 @@
+require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
 const path     = require('path');
-const fs       = require('fs');
 const crypto   = require('crypto');
+const mongoose = require('mongoose');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
-
-const MESSAGES_FILE = path.join(__dirname, 'data', 'messages.json');
-const USERS_FILE    = path.join(__dirname, 'data', 'users.json');
-const QUESTIONS_FILE= path.join(__dirname, 'data', 'questions.json');
 
 const ADMIN_USERS = ['NiaN0412', 'admin', 'q_nnn412'];
 
@@ -17,23 +14,45 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+// ── MongoDB Setup ────────────────────────────────────────────────
+const MONGO_URI = process.env.MONGO_URI;
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+const userSchema = new mongoose.Schema({
+  id: Number,
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  achievements: [String],
+  createdAt: { type: Date, default: Date.now }
+});
+const User = mongoose.model('User', userSchema);
+
+const messageSchema = new mongoose.Schema({
+  id: Number,
+  content: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+  seed: { type: Boolean, default: false }
+});
+const Message = mongoose.model('Message', messageSchema);
+
+const questionSchema = new mongoose.Schema({
+  id: Number,
+  content: { type: String, required: true },
+  author: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+  answered: { type: Boolean, default: false }
+});
+const Question = mongoose.model('Question', questionSchema);
+
 // ── Auth helpers ─────────────────────────────────────────────────
 
 const activeSessions = new Map(); // token → { userId, username, isAdmin }
 
 function hashPass(p) {
   return crypto.createHash('sha256').update(p + 'hackit_room_salt').digest('hex');
-}
-
-function readUsers() {
-  try {
-    if (!fs.existsSync(USERS_FILE)) { fs.writeFileSync(USERS_FILE, '[]'); return []; }
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  } catch { return []; }
-}
-
-function writeUsers(data) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(data, null, 2));
 }
 
 function authMiddleware(req, res, next) {
@@ -46,7 +65,7 @@ function authMiddleware(req, res, next) {
 }
 
 // POST /auth/register
-app.post('/auth/register', (req, res) => {
+app.post('/auth/register', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.status(400).json({ error: '欄位不能為空' });
@@ -55,181 +74,191 @@ app.post('/auth/register', (req, res) => {
   if (password.length < 4)
     return res.status(400).json({ error: '通行碼至少 4 個字元' });
 
-  const users = readUsers();
-  if (users.find(u => u.username === username.trim()))
-    return res.status(409).json({ error: '使用者名稱已存在' });
+  try {
+    const existing = await User.findOne({ username: username.trim() });
+    if (existing) {
+      return res.status(409).json({ error: '使用者名稱已存在' });
+    }
 
-  const isAdmin = ADMIN_USERS.includes(username.trim());
+    const newUser = new User({
+      id: Date.now(),
+      username: username.trim(),
+      password: hashPass(password),
+      achievements: ['first_login']
+    });
+    await newUser.save();
 
-  const user = {
-    id: Date.now(),
-    username: username.trim(),
-    password: hashPass(password),
-    achievements: [],
-    createdAt: new Date().toISOString(),
-  };
-  users.push(user);
-  writeUsers(users);
+    const token = crypto.randomUUID();
+    const isAdmin = ADMIN_USERS.includes(newUser.username);
+    activeSessions.set(token, { userId: newUser.id, username: newUser.username, isAdmin });
 
-  const token = crypto.randomBytes(20).toString('hex');
-  activeSessions.set(token, { userId: user.id, username: user.username, isAdmin });
-  res.json({ success: true, token, username: user.username, isAdmin });
+    res.json({ token, username: newUser.username, isAdmin, achievements: newUser.achievements });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
 });
 
 // POST /auth/login
-app.post('/auth/login', (req, res) => {
+app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
     return res.status(400).json({ error: '欄位不能為空' });
 
-  const users = readUsers();
-  const user  = users.find(u =>
-    u.username === username.trim() && u.password === hashPass(password));
-  if (!user)
-    return res.status(401).json({ error: '帳號或通行碼錯誤' });
+  try {
+    const user = await User.findOne({ username: username.trim() });
+    if (!user || user.password !== hashPass(password)) {
+      return res.status(401).json({ error: '帳號或密碼錯誤' });
+    }
 
-  const isAdmin = ADMIN_USERS.includes(user.username);
-  const token = crypto.randomBytes(20).toString('hex');
-  activeSessions.set(token, { userId: user.id, username: user.username, isAdmin });
-  res.json({ success: true, token, username: user.username, isAdmin });
+    const token = crypto.randomUUID();
+    const isAdmin = ADMIN_USERS.includes(user.username);
+    activeSessions.set(token, { userId: user.id, username: user.username, isAdmin });
+
+    res.json({ token, username: user.username, isAdmin, achievements: user.achievements || [] });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
 });
 
 // POST /auth/logout
-app.post('/auth/logout', (req, res) => {
+app.post('/auth/logout', authMiddleware, (req, res) => {
   const token = req.headers['x-hackit-token'];
-  if (token) activeSessions.delete(token);
+  activeSessions.delete(token);
   res.json({ success: true });
 });
 
-// ── Seed data ────────────────────────────────────────────────────
-
-const SEED_MESSAGES = [
-  { id: 1,  content: '有人曾在這裡想到一個點子，但沒有說出來。',   timestamp: '2025-01-01T00:00:00Z', seed: true },
-  { id: 2,  content: '也許門的另一邊什麼都沒有。也許有。',         timestamp: '2025-01-01T01:00:00Z', seed: true },
-  { id: 3,  content: '收音機接收的，不一定是廣播。',               timestamp: '2025-01-01T02:00:00Z', seed: true },
-  { id: 4,  content: '這張紙上本來有字，但你看不到。',             timestamp: '2025-01-01T03:00:00Z', seed: true },
-  { id: 5,  content: '燈泡閃爍的頻率，像摩斯密碼。',              timestamp: '2025-01-01T04:00:00Z', seed: true },
-  { id: 6,  content: '有人把一個未完成的問題放在這裡。',           timestamp: '2025-01-01T05:00:00Z', seed: true },
-  { id: 7,  content: '如果你不做任何事，這個空間還是會改變。',     timestamp: '2025-01-01T06:00:00Z', seed: true },
-  { id: 8,  content: '不是所有的想法都需要被完成。',               timestamp: '2025-01-01T07:00:00Z', seed: true },
-  { id: 9,  content: '這裡的時間和外面不一樣。',                   timestamp: '2025-01-01T08:00:00Z', seed: true },
-  { id: 10, content: '你剛才想到什麼了嗎？',                       timestamp: '2025-01-01T09:00:00Z', seed: true },
-  { id: 11, content: '...訊號斷了。請稍後再試。',                  timestamp: '2025-01-01T10:00:00Z', seed: true },
-  { id: 12, content: '有個聲音說：這不重要。但我覺得它重要。',     timestamp: '2025-01-01T11:00:00Z', seed: true },
-];
-
-function readMessages() {
+// GET /auth/me
+app.get('/auth/me', authMiddleware, async (req, res) => {
   try {
-    if (!fs.existsSync(MESSAGES_FILE)) {
-      fs.writeFileSync(MESSAGES_FILE, JSON.stringify(SEED_MESSAGES, null, 2));
-      return SEED_MESSAGES;
+    const user = await User.findOne({ username: req.user.username });
+    res.json({ ...req.user, achievements: user?.achievements || [] });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// POST /auth/achievement
+app.post('/auth/achievement', authMiddleware, async (req, res) => {
+  const { achievementId } = req.body;
+  if (!achievementId) return res.status(400).json({ error: '缺少成就 ID' });
+
+  try {
+    const user = await User.findOne({ username: req.user.username });
+    if (!user) return res.status(404).json({ error: '使用者不存在' });
+
+    if (!user.achievements.includes(achievementId)) {
+      user.achievements.push(achievementId);
+      await user.save();
     }
-    return JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf8'));
-  } catch { return SEED_MESSAGES; }
-}
+    res.json({ achievements: user.achievements });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
 
-function writeMessages(data) {
-  fs.writeFileSync(MESSAGES_FILE, JSON.stringify(data, null, 2));
-}
+// ── Messages API ─────────────────────────────────────────────────
 
-// ── Questions Storage ────────────────────────────────────────────
-function readQuestions() {
+app.get('/messages', async (req, res) => {
   try {
-    if (!fs.existsSync(QUESTIONS_FILE)) { fs.writeFileSync(QUESTIONS_FILE, '[]'); return []; }
-    return JSON.parse(fs.readFileSync(QUESTIONS_FILE, 'utf8'));
-  } catch { return []; }
-}
-
-function writeQuestions(data) {
-  fs.writeFileSync(QUESTIONS_FILE, JSON.stringify(data, null, 2));
-}
-
-// ── Message & Question routes ────────────────────────────────────
-
-// GET /messages — public (anyone can read)
-app.get('/messages', (req, res) => {
-  const data = readMessages();
-  const shuffled = [...data].sort(() => Math.random() - 0.5);
-  res.json(shuffled.slice(0, 8));
+    const msgs = await Message.find().sort({ timestamp: 1 }).limit(100);
+    res.json(msgs);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
 });
 
-// POST /messages — requires login
-app.post('/messages', authMiddleware, (req, res) => {
-  const { content, questionId } = req.body;
-  if (!content || content.trim().length === 0)
-    return res.status(400).json({ error: '內容不能為空' });
+app.post('/messages', authMiddleware, async (req, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: '空訊息' });
 
-  const data = readMessages();
-  const newMsg = {
-    id: Date.now(),
-    content: content.trim().slice(0, 200),
-    timestamp: new Date().toISOString(),
-    author: req.user.username,
-    seed: false,
-    questionId: questionId || null
-  };
-  data.push(newMsg);
-  writeMessages(data);
-  res.json({ success: true, message: newMsg });
+  try {
+    const newMsg = new Message({
+      id: Date.now(),
+      content: content.trim(),
+      timestamp: new Date(),
+      seed: false
+    });
+    await newMsg.save();
+    
+    // limit to 100
+    const count = await Message.countDocuments();
+    if (count > 100) {
+      const oldest = await Message.findOne().sort({ timestamp: 1 });
+      if (oldest) await Message.findByIdAndDelete(oldest._id);
+    }
+    res.json(newMsg);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
 });
 
-// GET /questions — public
-app.get('/questions', (req, res) => {
-  res.json(readQuestions());
+// ── Questions API ────────────────────────────────────────────────
+
+app.get('/questions', async (req, res) => {
+  try {
+    const qs = await Question.find().sort({ timestamp: 1 });
+    res.json(qs);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
 });
 
-// POST /questions — admin only
-app.post('/questions', authMiddleware, (req, res) => {
+app.post('/questions', authMiddleware, async (req, res) => {
   if (!req.user.isAdmin) {
     return res.status(403).json({ error: '權限不足' });
   }
   const { content } = req.body;
-  if (!content || content.trim().length === 0)
-    return res.status(400).json({ error: '內容不能為空' });
+  if (!content || !content.trim()) return res.status(400).json({ error: '空問題' });
 
-  const questions = readQuestions();
-  const newQ = {
-    id: Date.now(),
-    content: content.trim().slice(0, 200),
-    author: req.user.username,
-    timestamp: new Date().toISOString()
-  };
-  questions.push(newQ);
-  writeQuestions(questions);
-  res.json({ success: true, question: newQ });
-});
-
-// ── Achievements routes ────────────────────────────────────────
-
-// GET /achievements — requires login
-app.get('/achievements', authMiddleware, (req, res) => {
-  const users = readUsers();
-  const user = users.find(u => u.username === req.user.username);
-  if (!user) return res.status(404).json({ error: '使用者不存在' });
-  
-  res.json(user.achievements || []);
-});
-
-// POST /achievements/unlock — requires login
-app.post('/achievements/unlock', authMiddleware, (req, res) => {
-  const { achievementId } = req.body;
-  if (!achievementId) return res.status(400).json({ error: '缺少成就 ID' });
-
-  const users = readUsers();
-  const user = users.find(u => u.username === req.user.username);
-  if (!user) return res.status(404).json({ error: '使用者不存在' });
-
-  user.achievements = user.achievements || [];
-  
-  if (user.achievements.includes(achievementId)) {
-    return res.json({ success: true, alreadyUnlocked: true });
+  try {
+    const newQ = new Question({
+      id: Date.now(),
+      content: content.trim(),
+      author: req.user.username,
+      timestamp: new Date(),
+      answered: false
+    });
+    await newQ.save();
+    res.json(newQ);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
   }
-
-  user.achievements.push(achievementId);
-  writeUsers(users);
-  res.json({ success: true, unlocked: achievementId });
 });
 
-app.listen(PORT, () => {
-  console.log(`HackIt Room API → http://localhost:${PORT}`);
+app.post('/questions/:id/answer', authMiddleware, async (req, res) => {
+  const qid = Number(req.params.id);
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: '空回覆' });
+
+  try {
+    const q = await Question.findOne({ id: qid });
+    if (!q) return res.status(404).json({ error: '找不到問題' });
+    if (q.answered) return res.status(400).json({ error: '問題已回覆過' });
+
+    // Mark answered
+    q.answered = true;
+    await q.save();
+
+    // Create a message as the answer
+    const newMsg = new Message({
+      id: Date.now(),
+      content: `[回覆 ${q.author} 的問題] ${content.trim()}`,
+      timestamp: new Date(),
+      seed: false
+    });
+    await newMsg.save();
+
+    res.json({ success: true, message: newMsg });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// Default fallback
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT}`);
 });
