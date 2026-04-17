@@ -251,7 +251,7 @@ app.post('/questions', authMiddleware, async (req, res) => {
       answered: false
     });
     await newQ.save();
-    res.json(newQ);
+    res.json({ success: true, question: newQ });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
   }
