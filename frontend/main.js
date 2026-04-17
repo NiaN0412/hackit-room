@@ -24,11 +24,37 @@ const termPanel    = document.getElementById('term-panel');
 const termBody     = document.getElementById('term-body');
 const termClose    = document.getElementById('term-close');
 
+// ── Auth DOM ─────────────────────────────────────────────────────
+const loginScreen  = document.getElementById('login-screen');
+const loginUsername= document.getElementById('login-username');
+const loginPassword= document.getElementById('login-password');
+const loginError   = document.getElementById('login-error');
+const loginSubmit  = document.getElementById('login-submit');
+const loginSwitchBtn = document.getElementById('login-switch-btn');
+const loginSwitchText = document.getElementById('login-switch-text');
+const loginTitle   = document.getElementById('login-title');
+const hudUsername  = document.getElementById('hud-username');
+const logoutBtn    = document.getElementById('logout-btn');
+const trophyBtn    = document.getElementById('trophy-btn');
+const achievementsPanel = document.getElementById('achievements-panel');
+const achievementsClose = document.getElementById('achievements-close');
+const achievementsBody  = document.getElementById('achievements-body');
+const toastContainer    = document.getElementById('toast-container');
+
 // ── State ────────────────────────────────────────────────────────
+let authToken = localStorage.getItem('hackit_token');
+let authUsername = localStorage.getItem('hackit_username');
+let isAdmin = localStorage.getItem('hackit_isAdmin') === 'true';
+let authMode = 'login';
+
 let renderer = null;
 let animId   = null;
 let startT   = null;
 let messages = [];
+let questions = [];
+let unlockedAchievements = [];
+let clickCounts = { radio: 0, papers: 0, lamp: 0, door: 0, plant: 0 };
+let invalidCmdCount = 0;
 let soundOn  = false;
 let audioCtx = null;
 let ambientNode = null;
@@ -58,10 +84,19 @@ const OBJECT_META = {
     label: '紙張',
     narratives: null, // loads from API (user messages)
     fallback: [
-      '這張紙上本來有字，但已經消失了。',
-      '（看不清楚——但感覺很重要）',
-      '有人在這裡留下了一個問題，卻帶走了答案。',
-    ],
+      '一本佈滿灰塵的實體書。',
+      '標題模糊不清。',
+      '你翻了幾頁，都是空白。'
+    ]
+  },
+  plant: {
+    label: '盆栽',
+    fallback: [
+      '這是一盆不需要陽光也能存活的植物。它正安靜地陪著你。',
+      '你澆了一點水。雖然只是虛擬的水，但感覺心裡平靜了些。',
+      '葉片上有著細小的紋路，就像記憶的脈絡一樣。',
+      '它生長得很慢，但每天都在變化。有些事情急不得的。'
+    ]
   },
   door: {
     label: '門',
@@ -85,6 +120,10 @@ const OBJECT_META = {
 // ── Boot sequence ────────────────────────────────────────────────
 
 async function boot() {
+  // Ensure loader is visible (in case coming from login screen)
+  loader.style.display = 'flex';
+  loader.classList.remove('fade-out');
+  
   // Fake loading progress
   const hints = ['初始化空間...', '載入記憶碎片...', '校準頻率...', '準備就緒。'];
   let progress = 0;
@@ -97,8 +136,10 @@ async function boot() {
   loaderBar.style.width = '100%';
   await sleep(400);
 
-  // Fetch messages in background
+  // Fetch messages and questions in background
   fetchMessages();
+  fetchQuestions();
+  fetchAchievements();
 
   // Fade loader
   loader.classList.add('fade-out');
@@ -139,12 +180,79 @@ async function fetchMessages() {
   }
 }
 
-async function postMessage(content) {
+async function fetchQuestions() {
+  try {
+    const res = await fetch(`${API_BASE}/questions`);
+    if (res.ok) {
+      questions = await res.json();
+      populateQuestions();
+    }
+  } catch {
+    questions = [];
+  }
+}
+
+async function fetchAchievements() {
+  try {
+    const res = await fetch(`${API_BASE}/achievements`, {
+      headers: { 'x-hackit-token': authToken || '' }
+    });
+    if (res.ok) {
+      unlockedAchievements = await res.json();
+    }
+  } catch { }
+}
+
+async function unlockAchievement(id) {
+  if (unlockedAchievements.includes(id)) return;
+  if (!authToken) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/achievements/unlock`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-hackit-token': authToken 
+      },
+      body: JSON.stringify({ achievementId: id }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.unlocked) {
+      unlockedAchievements.push(id);
+      showToast(ACHIEVEMENTS[id]);
+    }
+  } catch { }
+}
+
+async function postQuestion(content) {
+  try {
+    const res = await fetch(`${API_BASE}/questions`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-hackit-token': authToken || ''
+      },
+      body: JSON.stringify({ content }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      questions.push(data.question);
+      populateQuestions();
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+async function postMessage(content, questionId = null) {
   try {
     const res = await fetch(`${API_BASE}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-hackit-token': authToken || ''
+      },
+      body: JSON.stringify({ content, questionId }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -158,6 +266,16 @@ async function postMessage(content) {
 function showDialog(objectId) {
   const meta = OBJECT_META[objectId];
   if (!meta) return;
+
+  // Track clicks for achievements
+  if (clickCounts[objectId] !== undefined) {
+    clickCounts[objectId]++;
+    if (objectId === 'door' && clickCounts.door >= 10) unlockAchievement('futile_effort');
+    if (objectId === 'radio' && clickCounts.radio >= 5) unlockAchievement('listener');
+    if (objectId === 'papers' && clickCounts.papers >= 5) unlockAchievement('clue_finder');
+    if (objectId === 'lamp' && clickCounts.lamp >= 5) unlockAchievement('light_toggle');
+    if (objectId === 'plant' && clickCounts.plant >= 5) unlockAchievement('green_thumb');
+  }
 
   // Door triggers animation, not dialog
   if (objectId === 'door') {
@@ -226,14 +344,60 @@ function randomFreq() {
 
 // ── Input Panel ─────────────────────────────────────────────────
 
+const questionSelectContainer = document.getElementById('question-selector-container');
+const questionSelect = document.getElementById('question-select');
+const inputTitle = document.getElementById('input-title');
+const inputSub = document.getElementById('input-sub');
+
+function populateQuestions() {
+  if (questions.length === 0) {
+    questionSelectContainer.classList.add('hidden');
+    return;
+  }
+  questionSelectContainer.classList.remove('hidden');
+  
+  // Keep the first option (free text)
+  const firstOpt = questionSelect.options[0];
+  questionSelect.innerHTML = '';
+  questionSelect.appendChild(firstOpt);
+  
+  questions.slice().reverse().forEach(q => {
+    const opt = document.createElement('option');
+    opt.value = q.id;
+    opt.textContent = q.content.length > 20 ? q.content.slice(0, 20) + '...' : q.content;
+    questionSelect.appendChild(opt);
+  });
+}
+
 function openInputPanel() {
   userInput.value = '';
   submitFeedback.classList.add('hidden');
   submitBtn.disabled = false;
   submitBtn.textContent = '→ 送出';
   inputPanel.classList.remove('hidden');
+  
+  // Reset select
+  questionSelect.value = "";
+  updateInputPrompt();
+  
   setTimeout(() => userInput.focus(), 100);
 }
+
+function updateInputPrompt() {
+  const qid = questionSelect.value;
+  if (!qid) {
+    inputTitle.textContent = '留下你的想法';
+    inputSub.textContent = '不評分・不強制・只是留下';
+  } else {
+    const q = questions.find(q => q.id == qid);
+    if (q) {
+      inputTitle.textContent = '回答問題';
+      inputSub.textContent = q.content;
+    }
+  }
+}
+
+questionSelect.addEventListener('change', updateInputPrompt);
 
 function closeInputPanel() {
   inputPanel.classList.add('hidden');
@@ -243,9 +407,14 @@ async function handleSubmit() {
   const content = userInput.value.trim();
   if (!content) return;
 
+  const qid = questionSelect.value || null;
+
   submitBtn.disabled = true;
   submitBtn.textContent = '傳送中...';
-  await postMessage(content);
+  await postMessage(content, qid);
+  
+  unlockAchievement('leave_mark');
+  if (qid) unlockAchievement('inquirer');
 
   userInput.value = '';
   submitBtn.textContent = '→ 送出';
@@ -315,13 +484,33 @@ function processCommand(raw) {
     appendTermLine('連線中...', '#ff6eb4', 80);
     appendTermLine('驗證權限... ██████████ 100%', '#ff6eb4', 260);
     appendTermLine('入侵成功。歡迎回家。', '#ffffff', 500);
-    setTimeout(() => triggerFireworks(), 650);
+    setTimeout(() => {
+      triggerFireworks();
+      unlockAchievement('hacker_spirit');
+    }, 650);
+  } else if (lo.startsWith('ask ')) {
+    if (!isAdmin) {
+      appendTermLine('[系統] 權限不足。僅限管理員發布問題。', '#ff4040', 0);
+    } else {
+      const qContent = cmd.slice(4).trim();
+      if (qContent) {
+        appendTermLine('發布問題中...', '#667788', 0);
+        postQuestion(qContent).then(success => {
+          if (success) {
+            appendTermLine('[系統] 問題已廣播至空間。', '#00e060', 400);
+          } else {
+            appendTermLine('[錯誤] 無法發布問題。', '#ff4040', 400);
+          }
+        });
+      }
+    }
   } else if (lo === 'help') {
     const cmds = [
       ['ls',          '列出記憶碎片'],
       ['cat <id>',    '讀取內容'],
       ['whoami',      '查詢身份'],
-      ['clear',       '清除画面'],
+      ['clear',       '清除畫面'],
+      ['ask <問題>',  '發布問題 (管理員)'],
       ['hack into it','███████'],
     ];
     appendTermLine('可用指令：', '#667788', 0);
@@ -336,8 +525,9 @@ function processCommand(raw) {
     });
   } else if (lo === 'whoami') {
     appendTermLine('', '#00e060', 0);
-    appendTermLine('unknown_visitor', '#ffc940', 80);
-    appendTermLine('但你在這裡。這已經足夾。', '#d4f0cc', 200);
+    appendTermLine(`USER_ID: ${authUsername || 'unknown'}`, '#ffc940', 80);
+    appendTermLine(`ROLE: ${isAdmin ? 'ADMINISTRATOR' : 'GUEST'}`, '#d4f0cc', 160);
+    appendTermLine('但你在這裡。這已經足夠。', '#d4f0cc', 240);
   } else if (lo === 'clear') {
     termBody.innerHTML = '';
   } else if (lo.startsWith('cat ')) {
@@ -350,6 +540,8 @@ function processCommand(raw) {
       appendTermLine('檔案不存在。', '#554455', 0);
     }
   } else {
+    invalidCmdCount++;
+    if (invalidCmdCount >= 3) unlockAchievement('lost_direction');
     appendTermLine(`未知指令: ${cmd}`, '#554455', 0);
     appendTermLine('輸入 help 查看可用指令', '#334455', 80);
   }
@@ -497,7 +689,13 @@ function toggleSound() {
   soundOn = !soundOn;
   soundBtn.classList.toggle('active', soundOn);
   soundBtn.textContent = soundOn ? '♪' : '×';
-  if (soundOn) startAmbient(); else stopAmbient();
+  if (soundOn) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    startAmbient();
+  } else {
+    stopAmbient();
+    unlockAchievement('silence');
+  }
 }
 
 // Click SFX
@@ -568,11 +766,16 @@ function setupEvents() {
       hideDialog();
       closeInputPanel();
       closeTerminal();
+      achievementsPanel.classList.add('hidden');
     }
   });
 
   // Terminal close button
   termClose.addEventListener('click', closeTerminal);
+  
+  // Trophy UI
+  trophyBtn.addEventListener('click', openAchievements);
+  achievementsClose.addEventListener('click', () => achievementsPanel.classList.add('hidden'));
 
   // Terminal input — process commands on Enter
   const termInput = document.getElementById('term-input');
@@ -593,5 +796,142 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ── Start ────────────────────────────────────────────────────────
-boot();
+// ── Achievements Display ─────────────────────────────────────────
+
+function openAchievements() {
+  achievementsBody.innerHTML = '';
+  
+  Object.keys(ACHIEVEMENTS).forEach(id => {
+    const meta = ACHIEVEMENTS[id];
+    const isUnlocked = unlockedAchievements.includes(id);
+    
+    const card = document.createElement('div');
+    card.className = `achieve-card ${isUnlocked ? 'unlocked' : ''}`;
+    
+    card.innerHTML = `
+      <div class="achieve-icon">${isUnlocked ? meta.icon : '🔒'}</div>
+      <div class="achieve-info">
+        <div class="achieve-name">${isUnlocked ? meta.name : '???'}</div>
+        <div class="achieve-desc">${isUnlocked ? meta.desc : '未解鎖'}</div>
+      </div>
+    `;
+    achievementsBody.appendChild(card);
+  });
+  
+  achievementsPanel.classList.remove('hidden');
+}
+
+function showToast(achievementMeta) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div class="toast-icon">${achievementMeta.icon}</div>
+    <div class="toast-text">
+      <div class="toast-title">達成成就</div>
+      <div class="toast-name">${achievementMeta.name}</div>
+    </div>
+  `;
+  toastContainer.appendChild(toast);
+  
+  setTimeout(() => {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 4500);
+}
+
+// ── Start & Auth ─────────────────────────────────────────────────
+
+function setupAuthEvents() {
+  loginSwitchBtn.addEventListener('click', () => {
+    authMode = authMode === 'login' ? 'register' : 'login';
+    if (authMode === 'register') {
+      loginTitle.textContent = '申請通行證';
+      loginSubmit.textContent = '[ CREATE → ]';
+      loginSwitchText.textContent = '已有通行證？';
+      loginSwitchBtn.textContent = '登入';
+    } else {
+      loginTitle.textContent = '身份驗證系統';
+      loginSubmit.textContent = '[ CONNECT → ]';
+      loginSwitchText.textContent = '尚無通行證？';
+      loginSwitchBtn.textContent = '申請';
+    }
+    loginError.textContent = '';
+  });
+
+  loginSubmit.addEventListener('click', async () => {
+    const user = loginUsername.value.trim();
+    const pass = loginPassword.value;
+    if (!user || !pass) {
+      loginError.textContent = '欄位不能為空';
+      return;
+    }
+    
+    loginSubmit.disabled = true;
+    loginSubmit.textContent = '連線中...';
+    loginError.textContent = '';
+    
+    try {
+      const ep = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const res = await fetch(`${API_BASE}${ep}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        localStorage.setItem('hackit_token', data.token);
+        localStorage.setItem('hackit_username', data.username);
+        localStorage.setItem('hackit_isAdmin', data.isAdmin ? 'true' : 'false');
+        authToken = data.token;
+        authUsername = data.username;
+        isAdmin = !!data.isAdmin;
+        
+        unlockAchievement('first_login');
+        
+        loginScreen.classList.add('fade-out');
+        setTimeout(() => {
+          loginScreen.classList.add('hidden');
+          hudUsername.textContent = 'USER: ' + authUsername;
+          boot();
+        }, 700);
+      } else {
+        loginError.textContent = data.error || '連線失敗';
+        loginSubmit.disabled = false;
+        loginSubmit.textContent = authMode === 'login' ? '[ CONNECT → ]' : '[ CREATE → ]';
+      }
+    } catch (err) {
+      loginError.textContent = '無法連線到伺服器';
+      loginSubmit.disabled = false;
+      loginSubmit.textContent = authMode === 'login' ? '[ CONNECT → ]' : '[ CREATE → ]';
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    if (authToken) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: { 'x-hackit-token': authToken }
+        });
+      } catch (e) {}
+    }
+    localStorage.removeItem('hackit_token');
+    localStorage.removeItem('hackit_username');
+    localStorage.removeItem('hackit_isAdmin');
+    location.reload();
+  });
+}
+
+function initApp() {
+  setupAuthEvents();
+  if (authToken) {
+    loginScreen.classList.add('hidden');
+    hudUsername.textContent = 'USER: ' + authUsername;
+    boot();
+  } else {
+    loader.classList.add('fade-out');
+    setTimeout(() => loader.style.display = 'none', 800);
+  }
+}
+
+initApp();

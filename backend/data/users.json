@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1776448248383,
+    "username": "testuser",
+    "password": "689dad75f6f83a38459ff70dc96719ab54a855bb278ac34660fe5642c50d53ed",
+    "createdAt": "2026-04-17T17:50:48.384Z",
+    "achievements": [
+      "first_login",
+      "light_toggle",
+      "futile_effort"
+    ]
+  },
+  {
+    "id": 1776448362365,
+    "username": "q_nnn412",
+    "password": "62730da6ddd08f06176ca73b69827d788dab474bfd4ed2a0c4fa38669f73ef78",
+    "createdAt": "2026-04-17T17:52:42.365Z",
+    "achievements": [
+      "first_login",
+      "light_toggle",
+      "futile_effort",
+      "hacker_spirit",
+      "clue_finder",
+      "leave_mark",
+      "inquirer",
+      "lost_direction",
+      "silence",
+      "listener",
+      "green_thumb"
+    ]
+  },
+  {
+    "id": 1776449237248,
+    "username": "admin",
+    "password": "e86567784287a7f90f3a83147d6ff2dc3a84838fe984fa036e06ed8406e1f7a8",
+    "createdAt": "2026-04-17T18:07:17.248Z"
+  },
+  {
+    "id": 1776451738828,
+    "username": "NiaN0412admin",
+    "password": "4d8061c21650b46a08854454f369bba53364c6c583f1cca76dc941989dc0c05e",
+    "achievements": [
+      "first_login"
+    ],
+    "createdAt": "2026-04-17T18:48:58.828Z"
+  },
+  {
+    "id": 1776451791650,
+    "username": "tester",
+    "password": "1bb9517b8799a540796f75fb13b94142e12efd54006068f24cc73aed03ef67e2",
+    "achievements": [
+      "first_login"
+    ],
+    "createdAt": "2026-04-17T18:49:51.651Z"
+  },
+  {
+    "id": 1776451931123,
+    "username": "p123",
+    "password": "6c0e9fe35c4b86917715276399768a3a41568cac752572565088ba2f008638de",
+    "achievements": [
+      "first_login",
+      "green_thumb"
+    ],
+    "createdAt": "2026-04-17T18:52:11.123Z"
+  }
+]

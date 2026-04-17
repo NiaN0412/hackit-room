@@ -23,9 +23,11 @@ const PALETTE = {
   paper2: '#b8b49a',
   wood:   '#3a2e22',
   woodLt: '#5a4832',
+  green:  '#4caf50',
+  greenDk:'#2e7d32',
 };
 
-const P = 3; // Base pixel size in screen pixels
+const P = 4; // Base pixel size in screen pixels
 
 class RoomRenderer {
   constructor(canvas) {
@@ -62,6 +64,7 @@ class RoomRenderer {
   buildObjects() {
     const W = this.W, H = this.H;
     const floor = H * 0.68;
+    const deskTop = floor - H * 0.27;
 
     this.objects = [
       {
@@ -83,15 +86,6 @@ class RoomRenderer {
         draw: (ctx, x, y, w, h, t, hov) => this.drawPapers(ctx, x, y, w, h, t, hov),
       },
       {
-        id: 'door',
-        label: '門',
-        color: PALETTE.blue,
-        x: W * 0.76, y: H * 0.15,
-        w: P * 16, h: P * 28,
-        hitPad: 4,
-        draw: (ctx, x, y, w, h, t, hov) => this.drawDoor(ctx, x, y, w, h, t, hov),
-      },
-      {
         id: 'drawer',
         label: '工作桌',
         color: PALETTE.teal,
@@ -100,23 +94,45 @@ class RoomRenderer {
         hitPad: 6,
         draw: (ctx, x, y, w, h, t, hov) => this.drawDrawer(ctx, x, y, w, h, t, hov),
       },
+      // ── 電腦：桌上，縮小 ──
       {
         id: 'computer',
         label: '電腦',
         color: PALETTE.teal,
-        x: W * 0.52, y: floor - H * 0.24,
-        w: W * 0.16, h: H * 0.24,
-        hitPad: 8,
+        x: W * 0.08, y: deskTop - H * 0.17,
+        w: W * 0.10, h: H * 0.17,
+        hitPad: 6,
         draw: (ctx, x, y, w, h, t, hov) => this.drawComputer(ctx, x, y, w, h, t, hov),
       },
+      // ── 收音機：桌上，往左移避免跟紙張重疊 ──
       {
         id: 'radio',
         label: '收音機',
         color: PALETTE.pink,
-        x: W * 0.72, y: floor - P * 18,
-        w: P * 22, h: P * 14,
+        x: W * 0.23, y: deskTop - P * 14,
+        w: P * 22,   h: P * 14,
         hitPad: 8,
         draw: (ctx, x, y, w, h, t, hov) => this.drawRadio(ctx, x, y, w, h, t, hov),
+      },
+      // ── 盆栽：桌上右側 ──
+      {
+        id: 'plant',
+        label: '盆栽',
+        color: PALETTE.green,
+        x: W * 0.43, y: deskTop - P * 18,
+        w: P * 12,   h: P * 18,
+        hitPad: 6,
+        draw: (ctx, x, y, w, h, t, hov) => this.drawPlant(ctx, x, y, w, h, t, hov),
+      },
+      // ── 門：放大，移至右下角 ──
+      {
+        id: 'door',
+        label: '門',
+        color: PALETTE.blue,
+        x: W * 0.82, y: floor - H * 0.52,
+        w: W * 0.12, h: H * 0.52,
+        hitPad: 6,
+        draw: (ctx, x, y, w, h, t, hov) => this.drawDoor(ctx, x, y, w, h, t, hov),
       },
     ];
   }
@@ -227,7 +243,6 @@ class RoomRenderer {
     this.fillPx(ctx, '#888888', x + P, y + h*0.5 - P, w - P*2, P*2);
 
     // Hover label
-    if (hov) this.drawLabel(ctx, x + w/2, y - P*12, '燈泡', PALETTE.amber);
   }
 
   // ── Object: Radio ────────────────────────────────────────
@@ -272,8 +287,6 @@ class RoomRenderer {
     // Knob
     this.fillPx(ctx, '#666677', x + w*0.7, y + P*6, P*4, P*4);
     this.fillPx(ctx, '#aaaacc', x + w*0.7 + P, y + P*6 + P, P*2, P*2);
-
-    if (hov) this.drawLabel(ctx, x + w/2, y - P*12, '收音機', PALETTE.pink);
   }
 
   // ── Object: Papers (Bulletin Board on Wall) ─────────
@@ -336,7 +349,6 @@ class RoomRenderer {
       ctx.lineWidth = P * 1.5;
       ctx.strokeRect(this.px(x-P*2), this.px(y-P*2), this.px(w+P*4), this.px(h+P*4));
       this.noGlow(ctx);
-      this.drawLabel(ctx, x + w/2, y - P*10, '紙張', PALETTE.purple);
     }
   }
 
@@ -396,8 +408,6 @@ class RoomRenderer {
     this.fillPx(ctx, `rgba(102,128,255,${glowA*0.7})`, doorX+doorW-P*2, y, P*2, h);
     this.fillPx(ctx, `rgba(102,128,255,${glowA*0.5})`, doorX, y, doorW, P*2);
     this.noGlow(ctx);
-
-    if (hov && open < 0.05) this.drawLabel(ctx, x + w/2, y - P*10, '門', PALETTE.blue);
     if (open > 0.3) this.drawLabel(ctx, x + w/2, y - P*10, '…', PALETTE.blue);
   }
 
@@ -475,7 +485,6 @@ class RoomRenderer {
       ctx.lineWidth = P * 1.5;
       ctx.strokeRect(this.px(x), this.px(y), this.px(w), this.px(h));
       this.noGlow(ctx);
-      this.drawLabel(ctx, x + w/2, y - P*12, '工作桌 → 留下想法', PALETTE.teal);
     }
   }
 
@@ -503,29 +512,14 @@ class RoomRenderer {
     }
     ctx.globalAlpha = 1;
 
-    // Scrolling log text
-    const LOG_LINES = [
-      '> HACKIT_OS v0.1.3',
-      '> 核小記憶體... OK',
-      '> 掃描想法碎片...',
-      '> 載入中...',
-      '> 發現 14 筆記錄',
-      '> 輕觸以查看',
-      '> _',
-    ];
-    const lineH  = P * 4.5;
-    const offset = Math.floor(t * 0.5) % LOG_LINES.length;
-    ctx.font = `${P*2.2}px 'Press Start 2P', monospace`;
-    this.glow(ctx, '#00ff60', hov ? 12 : 5);
-    ctx.fillStyle = '#00e060';
-    const visLines = Math.floor(scH / lineH) - 1;
-    for (let li = 0; li < visLines; li++) {
-      const line = LOG_LINES[(li + offset) % LOG_LINES.length];
-      ctx.fillText(line, this.px(scX+P*2), this.px(scY+P*3+li*lineH));
-    }
+    // Blurry neon green block
+    const pulse = 0.8 + Math.sin(t * 3) * 0.2;
+    this.glow(ctx, '#00ff60', hov ? 25 : 15);
+    this.fillPx(ctx, `rgba(0, 255, 96, ${0.35 * pulse})`, scX + P*2, scY + P*2, scW - P*4, scH - P*4);
+    
     // Cursor blink
     if (Math.floor(t * 2) % 2 === 0) {
-      this.fillPx(ctx, '#00e060', scX+P*2, scY+scH-P*6, P*5, P*3);
+      this.fillPx(ctx, '#00ff60', scX+P*2, scY+scH-P*6, P*5, P*3);
     }
     this.noGlow(ctx);
 
@@ -559,7 +553,44 @@ class RoomRenderer {
       ctx.lineWidth = P * 1.5;
       ctx.strokeRect(this.px(x-P), this.px(y-P), this.px(w+P*2), this.px(h+P*2));
       this.noGlow(ctx);
-      this.drawLabel(ctx, x+w/2, y-P*10, '電腦', PALETTE.teal);
+    }
+  }
+
+  // ── Plant ────────────────────────────────────────────────
+
+  drawPlant(ctx, x, y, w, h, t, hov) {
+    // Pot
+    const potY = y + h - P*6;
+    this.fillPx(ctx, '#7a5230', x + P*2, potY, w - P*4, P*6);
+    this.fillPx(ctx, '#5a3a20', x + P*2, potY, P*2, P*6); // shadow
+    this.fillPx(ctx, '#8b6038', x + P, potY - P*2, w - P*2, P*2); // rim
+    
+    // Dirt
+    this.fillPx(ctx, '#3d2616', x + P*3, potY - P, w - P*6, P);
+
+    // Leaves (animate slightly with t)
+    const sway = Math.sin(t * 1.5) * P;
+    
+    // Main stem
+    this.fillPx(ctx, PALETTE.greenDk, x + w/2 - P/2, y + P*4, P, h - P*10);
+    
+    // Left leaf
+    this.fillPx(ctx, PALETTE.green, x + P, y + P*6 + sway, P*4, P*3);
+    this.fillPx(ctx, PALETTE.greenDk, x + P*3, y + P*7 + sway, P*2, P);
+    
+    // Right leaf
+    this.fillPx(ctx, PALETTE.green, x + w - P*5, y + P*4 - sway, P*4, P*3);
+    this.fillPx(ctx, PALETTE.greenDk, x + w - P*3, y + P*5 - sway, P*2, P);
+    
+    // Top leaf
+    this.fillPx(ctx, '#66bb6a', x + w/2 - P*1.5 + sway*0.5, y + P, P*3, P*3);
+
+    if (hov) {
+      this.glow(ctx, PALETTE.green, 20);
+      ctx.strokeStyle = PALETTE.green;
+      ctx.lineWidth = P * 1.5;
+      ctx.strokeRect(this.px(x-P), this.px(y-P), this.px(w+P*2), this.px(h+P*2));
+      this.noGlow(ctx);
     }
   }
 
@@ -616,7 +647,8 @@ class RoomRenderer {
     const cx = (mx - rect.left) * scaleX;
     const cy = (my - rect.top)  * scaleY;
 
-    for (const obj of this.objects) {
+    for (let i = this.objects.length - 1; i >= 0; i--) {
+      const obj = this.objects[i];
       const pad = obj.hitPad * P;
       if (cx >= obj.x - pad && cx <= obj.x + obj.w + pad &&
           cy >= obj.y - pad && cy <= obj.y + obj.h + pad) {
@@ -636,9 +668,28 @@ class RoomRenderer {
     this.drawRoom(t);
     if (this.particles) this.drawParticles();
 
+    let hoveredLabelParams = null;
+
+    // Draw all objects (bottom to top, so normal order)
     for (const obj of this.objects) {
       const hov = this.hoverId === obj.id;
       obj.draw(ctx, obj.x, obj.y, obj.w, obj.h, t, hov);
+      
+      if (hov) {
+        let labelText = obj.label;
+        if (obj.id === 'door') {
+          if (this.doorOpenState > 0.3) labelText = '…';
+          else if (this.doorOpenState > 0.05) labelText = null;
+        }
+        if (labelText) {
+          hoveredLabelParams = [obj.x + obj.w / 2, obj.y - P * 10, labelText, obj.color];
+        }
+      }
+    }
+
+    // Draw the label last so it is on top of everything
+    if (hoveredLabelParams) {
+      this.drawLabel(ctx, ...hoveredLabelParams);
     }
   }
 }
