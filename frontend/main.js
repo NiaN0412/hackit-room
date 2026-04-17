@@ -1,6 +1,6 @@
 // main.js — HackIt Room Entry & Interaction Logic
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'https://hackit-room.onrender.com';
 
 // ── DOM refs ─────────────────────────────────────────────────────
 const loader       = document.getElementById('loader');
