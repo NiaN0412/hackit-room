@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HackIt Room</title>
+  <meta name="description" content="一個讓你開始亂想的空間。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+  <!-- Loading screen -->
+  <div id="loader">
+    <div id="loader-inner">
+      <div id="loader-title">HACKIT ROOM</div>
+      <div id="loader-bar-wrap">
+        <div id="loader-bar"></div>
+      </div>
+      <div id="loader-hint">請稍候...</div>
+    </div>
+  </div>
+
+  <!-- Scene wrapper -->
+  <div id="scene">
+    <canvas id="room-canvas"></canvas>
+
+    <!-- Scanlines overlay -->
+    <div id="scanlines"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <span id="hud-title">HACKIT ROOM</span>
+      <span id="hud-hint">點擊物件探索</span>
+    </div>
+
+    <!-- Sound toggle -->
+    <button id="sound-btn" title="音效開關">♪</button>
+
+    <!-- Dialog box -->
+    <div id="dialog" class="hidden">
+      <div id="dialog-header"><span id="dialog-src">???</span></div>
+      <div id="dialog-body"></div>
+      <button id="dialog-close">[ 關閉 ]</button>
+    </div>
+
+    <!-- Input panel (drawer) -->
+    <div id="input-panel" class="hidden">
+      <div id="input-title">留下你的想法</div>
+      <div id="input-sub">不評分・不強制・只是留下</div>
+      <textarea id="user-input" maxlength="200" placeholder="在這裡輸入..."></textarea>
+      <div id="input-actions">
+        <button id="submit-btn">→ 送出</button>
+        <button id="cancel-btn">取消</button>
+      </div>
+      <div id="submit-feedback" class="hidden">已記下。</div>
+    </div>
+
+    <!-- Terminal panel (computer) -->
+    <div id="term-panel" class="hidden">
+      <div id="term-header">
+        <span id="term-title">HACKIT_OS — 記憶索引</span>
+        <button id="term-close">[ 關閉 ]</button>
+      </div>
+      <div id="term-body"></div>
+      <div id="term-input-line">
+        <span id="term-prompt">&gt;</span>
+        <input id="term-input" type="text" autocomplete="off" spellcheck="false" placeholder="輸入指令..." />
+      </div>
+    </div>
+  </div>
+
+  <script src="room.js"></script>
+  <script src="main.js"></script>
+
+  <!-- Fireworks canvas (easter egg) -->
+  <canvas id="fireworks-canvas"></canvas>
+</body>
+
+</html>
