@@ -54,6 +54,13 @@ const questionSchema = new mongoose.Schema({
 });
 const Question = mongoose.model('Question', questionSchema);
 
+const announcementSchema = new mongoose.Schema({
+  content: { type: String, required: true },
+  author:  { type: String, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+const Announcement = mongoose.model('Announcement', announcementSchema);
+
 // ── Auto-Import Logic ────────────────────────────────────────────
 async function autoImportData() {
   try {
@@ -214,6 +221,36 @@ app.post('/auth/achievement', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /achievements — 回傳登入使用者的成就清單
+app.get('/achievements', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findOne({ username: req.user.username });
+    res.json(user?.achievements || []);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// POST /achievements/unlock — 解鎖成就並回傳 unlocked: true/false
+app.post('/achievements/unlock', authMiddleware, async (req, res) => {
+  const { achievementId } = req.body;
+  if (!achievementId) return res.status(400).json({ error: '缺少成就 ID' });
+
+  try {
+    const user = await User.findOne({ username: req.user.username });
+    if (!user) return res.status(404).json({ error: '使用者不存在' });
+
+    if (user.achievements.includes(achievementId)) {
+      return res.json({ success: true, unlocked: false, achievements: user.achievements });
+    }
+    user.achievements.push(achievementId);
+    await user.save();
+    res.json({ success: true, unlocked: true, achievements: user.achievements });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
 // ── Messages API ─────────────────────────────────────────────────
 
 app.get('/messages', async (req, res) => {
@@ -317,6 +354,47 @@ app.post('/questions/:id/answer', authMiddleware, async (req, res) => {
     await newMsg.save();
 
     res.json({ success: true, message: newMsg });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// ── Announcements API ────────────────────────────────────────────
+
+app.get('/announcements', async (req, res) => {
+  try {
+    const items = await Announcement.find().sort({ timestamp: -1 }).limit(20);
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+app.post('/announcements', authMiddleware, async (req, res) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: '權限不足' });
+  }
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: '公告內容不得為空' });
+
+  try {
+    const newA = new Announcement({
+      content: content.trim(),
+      author: req.user.username,
+      timestamp: new Date()
+    });
+    await newA.save();
+
+    // Discord notification
+    sendDiscordNotification({
+      title: '📣 HackIt Room — 系統公告',
+      description: newA.content,
+      color: 0xffc940,
+      footer: { text: `由 ${newA.author} 發布 · ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}` },
+      url: 'https://nian0412.github.io/hackit-room/frontend/'
+    });
+
+    res.json({ success: true, announcement: newA });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
   }
