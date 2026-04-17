@@ -4,6 +4,7 @@ const cors     = require('cors');
 const path     = require('path');
 const crypto   = require('crypto');
 const mongoose = require('mongoose');
+const https    = require('https');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -15,7 +16,8 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // ── MongoDB Setup ────────────────────────────────────────────────
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI       = process.env.MONGO_URI;
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 
 const fs = require('fs');
 
@@ -76,6 +78,30 @@ async function autoImportData() {
     console.log('Auto-import successful!');
   } catch (err) {
     console.error('Auto-import failed:', err);
+  }
+}
+
+// ── Discord Webhook ──────────────────────────────────────────────
+function sendDiscordNotification(embed) {
+  if (!DISCORD_WEBHOOK) return;
+  try {
+    const body = JSON.stringify({ embeds: [embed] });
+    const url  = new URL(DISCORD_WEBHOOK);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+    const req = https.request(options);
+    req.on('error', err => console.error('Discord webhook error:', err.message));
+    req.write(body);
+    req.end();
+  } catch (err) {
+    console.error('Discord webhook failed:', err.message);
   }
 }
 
@@ -251,6 +277,16 @@ app.post('/questions', authMiddleware, async (req, res) => {
       answered: false
     });
     await newQ.save();
+    
+    // Discord notification
+    sendDiscordNotification({
+      title: '📢 HackIt Room — 新問題廣播',
+      description: newQ.content,
+      color: 0x00ff60,
+      footer: { text: `由 ${newQ.author} 發布 · ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}` },
+      url: 'https://nian0412.github.io/hackit-room/frontend/'
+    });
+
     res.json({ success: true, question: newQ });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
