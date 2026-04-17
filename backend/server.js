@@ -124,7 +124,7 @@ app.post('/auth/register', async (req, res) => {
     const isAdmin = ADMIN_USERS.includes(newUser.username);
     activeSessions.set(token, { userId: newUser.id, username: newUser.username, isAdmin });
 
-    res.json({ token, username: newUser.username, isAdmin, achievements: newUser.achievements });
+    res.json({ success: true, token, username: newUser.username, isAdmin, achievements: newUser.achievements });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
   }
@@ -146,7 +146,7 @@ app.post('/auth/login', async (req, res) => {
     const isAdmin = ADMIN_USERS.includes(user.username);
     activeSessions.set(token, { userId: user.id, username: user.username, isAdmin });
 
-    res.json({ token, username: user.username, isAdmin, achievements: user.achievements || [] });
+    res.json({ success: true, token, username: user.username, isAdmin, achievements: user.achievements || [] });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
   }
