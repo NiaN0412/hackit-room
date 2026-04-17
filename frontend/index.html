@@ -64,7 +64,7 @@
     <div id="scanlines"></div>
 
     <!-- HUD -->
-    <div id="hud">
+    <div id="hud" class="hidden">
       <span id="hud-title">HACKIT ROOM</span>
       <span id="hud-hint">點擊物件探索</span>
       <div id="hud-user">
@@ -75,7 +75,7 @@
     </div>
 
     <!-- Sound toggle -->
-    <button id="sound-btn" title="音效開關">♪</button>
+    <button id="sound-btn" class="hidden" title="音效開關">♪</button>
 
     <!-- Dialog box -->
     <div id="dialog" class="hidden">
@@ -126,6 +126,28 @@
         <!-- Achievements will be populated here -->
       </div>
     </div>
+
+    <!-- Announcement Panel -->
+    <div id="announce-panel" class="hidden">
+      <div id="announce-header">
+        <span id="announce-title">📋 公告欄</span>
+        <button id="announce-close">[ 關閉 ]</button>
+      </div>
+      <div id="announce-body">
+        <!-- announcements rendered here -->
+      </div>
+      <!-- Admin: post new announcement -->
+      <div id="announce-form" class="hidden">
+        <textarea id="announce-input" maxlength="400" placeholder="輸入公告內容..."></textarea>
+        <div id="announce-actions">
+          <button id="announce-submit">[ 發布公告 ]</button>
+        </div>
+        <div id="announce-feedback" class="hidden">✓ 公告已發布</div>
+      </div>
+    </div>
+
+    <!-- Announcement FAB button -->
+    <button id="announce-btn" class="hidden" title="公告欄">📋</button>
 
     <!-- Toast Notification Container -->
     <div id="toast-container"></div>

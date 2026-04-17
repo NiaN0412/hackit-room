@@ -53,5 +53,10 @@ const ACHIEVEMENTS = {
     name: '綠手指',
     desc: '連續點擊盆栽 5 次，細心照料這株虛擬植物。',
     icon: '🌿'
+  },
+  unreasonable: {
+    name: '邏輯崩壞',
+    desc: '發現了一個不屬於這個維度的物件。',
+    icon: '🌀'
   }
 };

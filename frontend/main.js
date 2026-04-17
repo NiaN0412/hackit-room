@@ -1,6 +1,8 @@
 // main.js — HackIt Room Entry & Interaction Logic
 
-const API_BASE = 'https://hackit-room.onrender.com';
+const API_BASE = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  ? 'http://localhost:3001'
+  : 'https://hackit-room.onrender.com';
 
 // ── DOM refs ─────────────────────────────────────────────────────
 const loader       = document.getElementById('loader');
@@ -140,6 +142,7 @@ async function boot() {
   fetchMessages();
   fetchQuestions();
   fetchAchievements();
+  fetchAnnouncements();
 
   // Fade loader
   loader.classList.add('fade-out');
@@ -150,6 +153,11 @@ async function boot() {
   renderer = new RoomRenderer(canvas);
   renderer.initParticles();
   scene.classList.add('visible');
+  
+  // Reveal UI elements
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('announce-btn').classList.remove('hidden');
+  document.getElementById('sound-btn').classList.remove('hidden');
 
   // Staggered reveal
   await sleep(600);
@@ -193,16 +201,113 @@ async function fetchQuestions() {
 }
 
 async function fetchAchievements() {
+  if (!authToken) return;
   try {
     const res = await fetch(`${API_BASE}/achievements`, {
-      headers: { 'x-hackit-token': authToken || '' }
+      headers: { 'x-hackit-token': authToken }
     });
     if (res.ok) {
       unlockedAchievements = await res.json();
+    } else if (res.status === 401) {
+      // Session expired or invalid
+      console.warn('Achievement fetch unauthorized - session may have expired.');
+    }
+  } catch (err) {
+    console.error('Failed to fetch achievements:', err);
+  }
+}
+
+// ── Announcements ────────────────────────────────────────────────
+
+let announcements = [];
+
+async function fetchAnnouncements() {
+  try {
+    const res = await fetch(`${API_BASE}/announcements`);
+    if (res.ok) {
+      announcements = await res.json();
+      renderAnnouncements();
     }
   } catch { }
 }
 
+function renderAnnouncements() {
+  const body = document.getElementById('announce-body');
+  body.innerHTML = '';
+  if (!announcements.length) {
+    body.innerHTML = '<div class="announce-empty">目前無公告</div>';
+    return;
+  }
+  announcements.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'announce-item';
+    const ts = a.timestamp ? new Date(a.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : '?';
+    item.innerHTML = `
+      <div class="announce-item-content">${a.content}</div>
+      <div class="announce-item-meta">
+        <span>📌 ${a.author}</span>
+        <span>${ts}</span>
+      </div>`;
+    body.appendChild(item);
+  });
+}
+
+async function postAnnouncement(content) {
+  try {
+    const res = await fetch(`${API_BASE}/announcements`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hackit-token': authToken || ''
+      },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      announcements.unshift(data.announcement);
+      renderAnnouncements();
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+function setupAnnouncementEvents() {
+  const btn    = document.getElementById('announce-btn');
+  const panel  = document.getElementById('announce-panel');
+  const close  = document.getElementById('announce-close');
+  const form   = document.getElementById('announce-form');
+  const input  = document.getElementById('announce-input');
+  const submit = document.getElementById('announce-submit');
+  const fb     = document.getElementById('announce-feedback');
+
+  btn.addEventListener('click', () => {
+    const isOpen = !panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', isOpen);
+    if (!isOpen) {
+      fetchAnnouncements();
+      // Show form for admins only
+      form.classList.toggle('hidden', !isAdmin);
+    }
+  });
+
+  close.addEventListener('click', () => panel.classList.add('hidden'));
+
+  submit.addEventListener('click', async () => {
+    const content = input.value.trim();
+    if (!content) return;
+    submit.disabled = true;
+    submit.textContent = '發布中...';
+    const ok = await postAnnouncement(content);
+    if (ok) {
+      input.value = '';
+      fb.classList.remove('hidden');
+      setTimeout(() => fb.classList.add('hidden'), 2500);
+    }
+    submit.disabled = false;
+    submit.textContent = '[ 發布公告 ]';
+  });
+}
 async function unlockAchievement(id) {
   if (unlockedAchievements.includes(id)) return;
   if (!authToken) return;
@@ -751,6 +856,9 @@ function setupEvents() {
   submitBtn.addEventListener('click', handleSubmit);
   cancelBtn.addEventListener('click', closeInputPanel);
   userInput.addEventListener('keydown', (e) => {
+    // Ignore Enter if IME is composing
+    if (e.isComposing || e.keyCode === 229) return;
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -781,6 +889,9 @@ function setupEvents() {
   const termInput = document.getElementById('term-input');
   if (termInput) {
     termInput.addEventListener('keydown', (e) => {
+      // Ignore Enter if IME is composing
+      if (e.isComposing || e.keyCode === 229) return;
+
       if (e.key === 'Enter') {
         e.preventDefault();
         processCommand(termInput.value);
@@ -885,6 +996,7 @@ function setupAuthEvents() {
         authToken = data.token;
         authUsername = data.username;
         isAdmin = !!data.isAdmin;
+        unlockedAchievements = data.achievements || [];
         
         unlockAchievement('first_login');
         
@@ -924,6 +1036,7 @@ function setupAuthEvents() {
 
 function initApp() {
   setupAuthEvents();
+  setupAnnouncementEvents();
   if (authToken) {
     loginScreen.classList.add('hidden');
     hudUsername.textContent = 'USER: ' + authUsername;
