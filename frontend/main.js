@@ -158,6 +158,7 @@ async function boot() {
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('announce-btn').classList.remove('hidden');
   document.getElementById('sound-btn').classList.remove('hidden');
+  document.getElementById('artifact-wrap').classList.remove('hidden');
 
   // Staggered reveal
   await sleep(600);
@@ -884,6 +885,16 @@ function setupEvents() {
   // Trophy UI
   trophyBtn.addEventListener('click', openAchievements);
   achievementsClose.addEventListener('click', () => achievementsPanel.classList.add('hidden'));
+
+  // Artifact Click
+  const artifactWrap = document.getElementById('artifact-wrap');
+  artifactWrap.addEventListener('click', () => {
+    dialogSrc.textContent = '???';
+    dialogBody.textContent = '「這是一個錯誤，但也是唯一的真相。你看到的是這裡最真實的碎片。」';
+    dialog.classList.remove('hidden');
+    unlockAchievement('unreasonable');
+    playClick('radio'); // Use radio sound for glitchy feel
+  });
 
   // Terminal input — process commands on Enter
   const termInput = document.getElementById('term-input');

@@ -1010,3 +1010,70 @@ canvas.cursor-pointer { cursor: pointer !important; }
   margin-top: 6px;
 }
 #announce-feedback.hidden { display: none; }
+
+/* =============================================
+   UNREASONABLE COMPONENT: THE ARTIFACT
+   ============================================= */
+
+#artifact-wrap {
+  position: absolute;
+  top: 15%;
+  right: 12%;
+  width: 60px;
+  height: 60px;
+  perspective: 600px;
+  z-index: 10;
+  cursor: pointer;
+  filter: drop-shadow(0 0 15px var(--pink));
+  animation: float-artifact 4s ease-in-out infinite;
+}
+
+#artifact {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: spin-cube 8s linear infinite;
+}
+
+.cube-face {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border: 1px solid var(--pink);
+  background: rgba(255, 110, 180, 0.15);
+  color: var(--pink);
+  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backface-visibility: visible;
+  text-shadow: 0 0 5px var(--pink);
+  box-shadow: inset 0 0 10px rgba(255, 110, 180, 0.3);
+}
+
+.front  { transform: rotateY(  0deg) translateZ(30px); }
+.back   { transform: rotateY(180deg) translateZ(30px); }
+.right  { transform: rotateY( 90deg) translateZ(30px); }
+.left   { transform: rotateY(-90deg) translateZ(30px); }
+.top    { transform: rotateX( 90deg) translateZ(30px); }
+.bottom { transform: rotateX(-90deg) translateZ(30px); }
+
+@keyframes spin-cube {
+  0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  100% { transform: rotateX(360deg) rotateY(720deg) rotateZ(360deg); }
+}
+
+@keyframes float-artifact {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-20px) scale(1.1); }
+}
+
+#artifact-wrap:hover {
+  filter: drop-shadow(0 0 25px var(--teal));
+}
+#artifact-wrap:hover .cube-face {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: rgba(0, 229, 204, 0.2);
+}
