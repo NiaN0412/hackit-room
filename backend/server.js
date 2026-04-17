@@ -5,7 +5,7 @@ const fs       = require('fs');
 const crypto   = require('crypto');
 
 const app  = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 const MESSAGES_FILE = path.join(__dirname, 'data', 'messages.json');
 const USERS_FILE    = path.join(__dirname, 'data', 'users.json');
